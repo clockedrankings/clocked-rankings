@@ -1,5 +1,6 @@
 import { getAccessToken } from '../auth.js'
 import { WCL_API_URL } from '../config.js'
+import { setState } from '../db.js'
 import {
   GET_ZONES,
   GET_ENCOUNTER_GUILD_RANKINGS,
@@ -62,6 +63,7 @@ export async function gql<T>(query: string, variables: Record<string, unknown>):
 
   if (json.data?.rateLimitData) {
     lastRateLimit = json.data.rateLimitData
+    setState('last_rate_limit', JSON.stringify({ ...lastRateLimit, capturedAt: Date.now() }))
     const remaining = lastRateLimit.limitPerHour - lastRateLimit.pointsSpentThisHour
     if (remaining < RATE_LIMIT_SAFETY) {
       throw new RateLimitError(

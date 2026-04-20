@@ -3,6 +3,7 @@ import { WCL_API_URL } from '../config.js'
 import { setState } from '../db.js'
 import {
   GET_ZONES,
+  GET_ZONE_PARTITIONS,
   GET_ENCOUNTER_GUILD_RANKINGS,
   GET_GUILD_REPORTS,
   GET_REPORT_FIGHTS,
@@ -85,14 +86,30 @@ export async function fetchZones(): Promise<WorldDataResponse['worldData']['zone
 export async function fetchEncounterRankings(
   encounterID: number,
   page: number,
+  partition: number,
 ): Promise<EncounterRankingsJSON> {
   const data = await gql<{
     worldData: { encounter: { fightRankings: EncounterRankingsJSON | { error: string } } }
-  }>(GET_ENCOUNTER_GUILD_RANKINGS, { encounterID, page })
+  }>(GET_ENCOUNTER_GUILD_RANKINGS, { encounterID, page, partition })
   const raw = data.worldData.encounter.fightRankings
   // WCL returns { error: "..." } when page > 20 (hard cap) or invalid partition
   if ('error' in raw) return { page, hasMorePages: false, count: 0, rankings: [] }
   return raw
+}
+
+export interface ZonePartition {
+  id: number
+  name: string
+  compactName: string
+  default: boolean
+}
+
+export async function fetchZonePartitions(zoneID: number): Promise<ZonePartition[]> {
+  const data = await gql<{ worldData: { zone: { partitions: ZonePartition[] } } }>(
+    GET_ZONE_PARTITIONS,
+    { zoneID },
+  )
+  return data.worldData.zone.partitions
 }
 
 export async function fetchGuildReports(

@@ -12,14 +12,24 @@ export const GET_ZONES = `
 
 // Encounter rankings with guild filter. `metric: execution` groups by guild (GuildRankings).
 // `difficulty: 5` = Mythic. The response is a JSON scalar.
+export const GET_ZONE_PARTITIONS = `
+  query GetZonePartitions($zoneID: Int!) {
+    worldData {
+      zone(id: $zoneID) {
+        partitions { id name compactName default }
+      }
+    }
+  }
+`
+
 export const GET_ENCOUNTER_GUILD_RANKINGS = `
-  query GetEncounterGuildRankings($encounterID: Int!, $page: Int!) {
+  query GetEncounterGuildRankings($encounterID: Int!, $page: Int!, $partition: Int!) {
     worldData {
       encounter(id: $encounterID) {
         fightRankings(
           difficulty: 5
           page: $page
-          partition: 1
+          partition: $partition
         )
       }
     }

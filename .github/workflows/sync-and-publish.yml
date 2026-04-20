@@ -1,0 +1,73 @@
+name: Sync and publish
+
+on:
+  schedule:
+    - cron: '15 * * * *'  # hourly, at :15
+  workflow_dispatch:
+
+concurrency:
+  group: sync
+  cancel-in-progress: false  # never kill a running sync; queue instead
+
+permissions:
+  contents: write  # for pushing gh-pages
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # Persist the SQLite DB across runs via Actions cache.
+      # A date-based key means each run writes a fresh cache entry; restore-keys
+      # falls back to the newest previous entry.
+      - name: Restore DB cache
+        id: db-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.config/clocked/data.db
+          key: clocked-db-${{ github.run_id }}
+          restore-keys: |
+            clocked-db-
+
+      - name: Sync
+        env:
+          WCL_CLIENT_ID: ${{ secrets.WCL_CLIENT_ID }}
+          WCL_CLIENT_SECRET: ${{ secrets.WCL_CLIENT_SECRET }}
+        # Exit 2 = rate limit hit; that's expected and non-fatal, we'll continue
+        # with the partial data and the next run resumes from the checkpoint.
+        run: npm run sync || [ $? -eq 2 ]
+
+      - name: Save DB cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.config/clocked/data.db
+          key: clocked-db-${{ github.run_id }}
+
+      - name: Build static HTML
+        run: npm run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

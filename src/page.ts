@@ -559,7 +559,10 @@ export function renderRankingsPage(): string {
       render();
     })();
   </script>
-  <script>
+  ${
+    process.env.STATIC_BUILD
+      ? ''
+      : `<script>
     (function () {
       let boot = null;
       const es = new EventSource('/__reload');
@@ -568,7 +571,8 @@ export function renderRankingsPage(): string {
         boot = e.data;
       };
     })();
-  </script>
+  </script>`
+  }
 </body>
 </html>`
 }

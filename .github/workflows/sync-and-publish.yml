@@ -34,7 +34,7 @@ jobs:
         id: db-cache
         uses: actions/cache/restore@v4
         with:
-          path: ~/.config/clocked/data.db
+          path: ~/.config/guild-rankings-by-day/data.db
           key: clocked-db-${{ github.run_id }}
           restore-keys: |
             clocked-db-
@@ -51,7 +51,7 @@ jobs:
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: ~/.config/clocked/data.db
+          path: ~/.config/guild-rankings-by-day/data.db
           key: clocked-db-${{ github.run_id }}
 
       - name: Build static HTML

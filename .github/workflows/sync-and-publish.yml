@@ -2,7 +2,9 @@ name: Sync and publish
 
 on:
   schedule:
-    - cron: '15 * * * *'  # hourly, at :15
+    # Twice hourly, off-peak minutes. GH often drops :00 and :15 schedules
+    # under load — doubling up + picking odd minutes makes drops tolerable.
+    - cron: '17,47 * * * *'
   workflow_dispatch:
 
 concurrency:

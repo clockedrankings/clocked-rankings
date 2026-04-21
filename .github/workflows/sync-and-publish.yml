@@ -2,9 +2,9 @@ name: Sync and publish
 
 on:
   schedule:
-    # Twice hourly, off-peak minutes. GH often drops :00 and :15 schedules
-    # under load — doubling up + picking odd minutes makes drops tolerable.
-    - cron: '17,47 * * * *'
+    # Every 10 minutes. GitHub silently drops scheduled runs under load, so
+    # we over-schedule and rely on the sync being a no-op when rate-limited.
+    - cron: '*/10 * * * *'
   workflow_dispatch:
 
 concurrency:

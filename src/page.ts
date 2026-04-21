@@ -1,4 +1,4 @@
-import { db } from './db.js'
+import { db, getState } from './db.js'
 
 interface Interval {
   first: number
@@ -205,8 +205,17 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
 }
 
+function fmtLastSync(): string {
+  const raw = getState('last_sync_at')
+  if (!raw) return ''
+  const d = new Date(parseInt(raw, 10))
+  // e.g. "2026-04-20 22:58 UTC"
+  return d.toISOString().replace('T', ' ').slice(0, 16) + ' UTC'
+}
+
 export function renderRankingsPage(): string {
   const data = loadRanked()
+  const lastSync = fmtLastSync()
   const totalGuilds = (db.prepare('SELECT COUNT(*) as c FROM guilds').get() as { c: number }).c
   const ceGuilds = (db
     .prepare('SELECT COUNT(*) as c FROM guilds WHERE ce_achieved_at IS NOT NULL')
@@ -317,7 +326,9 @@ export function renderRankingsPage(): string {
 <body>
   <div class="header">
     <h1>Clocked <span class="tagline">— hours raided before CE</span></h1>
-    <span class="credit">made by Bredie · Area 52 &lt;Death Jesters&gt;</span>
+    <span class="credit">
+      ${lastSync ? `last sync: ${escapeHtml(lastSync)} · ` : ''}made by Bredie · Area 52 &lt;Death Jesters&gt;
+    </span>
   </div>
   <div class="sub">
     Ranked by Mythic bosses killed, tiebroken by hours raided per week before Cutting Edge.

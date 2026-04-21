@@ -3,7 +3,7 @@ import { ensureZones, getAllEncounterIDs } from './zones.js'
 import { syncGuilds } from './guilds.js'
 import { syncReports } from './reports.js'
 import { RateLimitError, getLastRateLimit } from '../wcl/client.js'
-import { db } from '../db.js'
+import { db, setState } from '../db.js'
 
 if (!CLIENT_ID || !CLIENT_SECRET) {
   console.error('Error: WCL_CLIENT_ID and WCL_CLIENT_SECRET must be set in .env')
@@ -38,12 +38,19 @@ async function main(): Promise<void> {
   console.log('✓ Sync complete')
 }
 
-main().catch(err => {
-  if (err instanceof RateLimitError) {
-    console.error(`\n⚠ Hit rate limit. Progress saved — rerun \`npm run sync\` after ${err.resetIn}s.`)
-    logRateLimit()
-    process.exit(2)
-  }
-  console.error(err)
-  process.exit(1)
-})
+function touchLastSync(): void {
+  setState('last_sync_at', String(Date.now()))
+}
+
+main()
+  .then(() => touchLastSync())
+  .catch(err => {
+    if (err instanceof RateLimitError) {
+      touchLastSync() // rate-limited runs still make forward progress
+      console.error(`\n⚠ Hit rate limit. Progress saved — rerun \`npm run sync\` after ${err.resetIn}s.`)
+      logRateLimit()
+      process.exit(2)
+    }
+    console.error(err)
+    process.exit(1)
+  })

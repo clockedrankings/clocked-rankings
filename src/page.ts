@@ -328,6 +328,9 @@ export function renderRankingsPage(): string {
     .progress { color: #6b7280; }
     .empty { padding: 2rem; text-align: center; color: #6b7280; }
     .credit { color: #6b7280; font-size: 12px; }
+    th.sortable { cursor: pointer; user-select: none; }
+    th.sortable:hover { color: #f3f4f6; }
+    th.sortable .sort-arrow { display: inline-block; width: 0.7em; margin-left: 4px; color: #d4a017; }
   </style>
 </head>
 <body>
@@ -378,10 +381,10 @@ export function renderRankingsPage(): string {
         <th>Server</th>
         <th>Category</th>
         <th class="num">Bosses</th>
-        <th class="num">Hours/week</th>
-        <th class="num">Total hours</th>
-        <th class="num">Nights</th>
-        <th class="num">Weeks</th>
+        <th class="num sortable" data-sort="hours_per_week">Hours/week<span class="sort-arrow"></span></th>
+        <th class="num sortable" data-sort="total_hours">Total hours<span class="sort-arrow"></span></th>
+        <th class="num sortable" data-sort="raid_nights">Nights<span class="sort-arrow"></span></th>
+        <th class="num sortable" data-sort="raid_weeks">Weeks<span class="sort-arrow"></span></th>
         <th>CE</th>
         <th>Last updated</th>
       </tr>
@@ -413,7 +416,15 @@ export function renderRankingsPage(): string {
           tz: p.get('tz') || 'own',
           minHours: p.get('min_hours') !== null && p.get('min_hours') !== '' ? parseFloat(p.get('min_hours')) : null,
           maxHours: p.get('max_hours') !== null && p.get('max_hours') !== '' ? parseFloat(p.get('max_hours')) : null,
+          sort: p.get('sort') || '',  // e.g. "hours_per_week-desc"
         };
+      }
+
+      function applySort(rows, sort) {
+        if (!sort) return rows;  // default: bosses desc, total_hours asc (server-side)
+        const [col, dir] = sort.split('-');
+        const sign = dir === 'asc' ? 1 : -1;
+        return [...rows].sort((a, b) => sign * ((a[col] ?? 0) - (b[col] ?? 0)));
       }
 
       function categoryFor(r, tz) {
@@ -519,12 +530,25 @@ export function renderRankingsPage(): string {
       function render() {
         const f = readFilters();
         CURRENT_TZ = f.tz;
-        const rows = filterGuilds(f);
+        const rows = applySort(filterGuilds(f), f.sort);
         renderAwards(rows);
         renderTable(rows);
         updateChipActive(f);
         updateFormValues(f);
+        updateSortHeaders(f.sort);
         document.getElementById('shown-count').textContent = rows.length;
+      }
+
+      function updateSortHeaders(sort) {
+        const [col, dir] = (sort || '').split('-');
+        document.querySelectorAll('th.sortable').forEach(th => {
+          const arrow = th.querySelector('.sort-arrow');
+          if (th.dataset.sort === col) {
+            arrow.textContent = dir === 'asc' ? '▲' : '▼';
+          } else {
+            arrow.textContent = '';
+          }
+        });
       }
 
       function updateUrl(params) {
@@ -540,6 +564,23 @@ export function renderRankingsPage(): string {
         for (const [k, v] of new URLSearchParams(a.dataset.filter)) {
           if (v === '') params.delete(k); else params.set(k, v);
         }
+        updateUrl(params);
+        render();
+      });
+
+      document.addEventListener('click', e => {
+        const th = e.target.closest('th.sortable');
+        if (!th) return;
+        const col = th.dataset.sort;
+        const params = new URLSearchParams(location.search);
+        const cur = params.get('sort') || '';
+        const [curCol, curDir] = cur.split('-');
+        // First click: desc. Same column again: flip to asc. Third click: clear.
+        let next;
+        if (curCol !== col) next = col + '-desc';
+        else if (curDir === 'desc') next = col + '-asc';
+        else next = '';
+        if (next) params.set('sort', next); else params.delete('sort');
         updateUrl(params);
         render();
       });

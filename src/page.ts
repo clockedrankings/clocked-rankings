@@ -89,19 +89,17 @@ interface GuildData {
 }
 
 function loadRanked(): GuildData[] {
-  // Grab mythic-team reports: those containing ≥1 tier-Mythic fight.
+  // All reports for synced guilds count as raid time — Heroic and Normal
+  // reports are legit raid nights from the same roster. Mythic-only filter
+  // under-counts guilds who farm lower difficulties. Boss kill counts are
+  // derived separately from mythic_kills so they stay Mythic-only.
   const reports = db
     .prepare(`
-      WITH mythic_reports AS (
-        SELECT DISTINCT report_code FROM fights
-        WHERE difficulty = 5 AND encounter_id IN (SELECT id FROM encounters)
-      )
       SELECT r.guild_id, r.code, r.first_pull, r.last_pull
       FROM reports r
       JOIN guilds g ON g.id = r.guild_id
       WHERE r.first_pull IS NOT NULL AND r.last_pull IS NOT NULL
         AND g.reports_synced_at IS NOT NULL
-        AND r.code IN (SELECT report_code FROM mythic_reports)
         AND (g.ce_achieved_at IS NULL OR r.first_pull <= g.ce_achieved_at)
     `)
     .all() as { guild_id: number; code: string; first_pull: number; last_pull: number }[]

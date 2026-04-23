@@ -45,9 +45,15 @@ jobs:
         env:
           WCL_CLIENT_ID: ${{ secrets.WCL_CLIENT_ID }}
           WCL_CLIENT_SECRET: ${{ secrets.WCL_CLIENT_SECRET }}
-        # Exit 2 = rate limit hit; that's expected and non-fatal, we'll continue
-        # with the partial data and the next run resumes from the checkpoint.
-        run: npm run sync || [ $? -eq 2 ]
+        # Exit 2 = rate limit (expected, non-fatal).
+        # Exit 3 = WCL 5xx (transient, surface as warning, don't fail the build).
+        run: |
+          if npm run sync; then rc=0; else rc=$?; fi
+          case $rc in
+            0|2) ;;
+            3) echo "::warning title=WCL 5xx::Sync exited because WCL returned a 5xx. Build will publish current data." ;;
+            *) exit $rc ;;
+          esac
 
       - name: Save DB cache
         if: always()

@@ -23,6 +23,13 @@ export class RateLimitError extends Error {
   }
 }
 
+export class WCLServerError extends Error {
+  constructor(public status: number, body: string) {
+    super(`WCL server error: ${status} ${body.slice(0, 200)}`)
+    this.name = 'WCLServerError'
+  }
+}
+
 let lastRateLimit: RateLimitData | null = null
 export function getLastRateLimit(): RateLimitData | null {
   return lastRateLimit
@@ -52,6 +59,9 @@ export async function gql<T>(query: string, variables: Record<string, unknown>):
     throw new RateLimitError(reset, lastRateLimit?.pointsSpentThisHour ?? 0, lastRateLimit?.limitPerHour ?? 0)
   }
 
+  if (res.status >= 500 && res.status < 600) {
+    throw new WCLServerError(res.status, await res.text())
+  }
   if (!res.ok) throw new Error(`WCL API error: ${res.status} ${await res.text()}`)
 
   const json = (await res.json()) as {

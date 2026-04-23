@@ -2,7 +2,7 @@ import { CLIENT_ID, CLIENT_SECRET } from '../config.js'
 import { ensureZones, getAllEncounterIDs } from './zones.js'
 import { syncGuilds } from './guilds.js'
 import { syncReports } from './reports.js'
-import { RateLimitError, getLastRateLimit } from '../wcl/client.js'
+import { RateLimitError, WCLServerError, getLastRateLimit } from '../wcl/client.js'
 import { db, setState } from '../db.js'
 
 if (!CLIENT_ID || !CLIENT_SECRET) {
@@ -50,6 +50,10 @@ main()
       console.error(`\n⚠ Hit rate limit. Progress saved — rerun \`npm run sync\` after ${err.resetIn}s.`)
       logRateLimit()
       process.exit(2)
+    }
+    if (err instanceof WCLServerError) {
+      console.error(`\n⚠ WCL server returned ${err.status}. Progress saved — will retry next run.`)
+      process.exit(3)
     }
     console.error(err)
     process.exit(1)

@@ -52,8 +52,12 @@ function mergeIntervals(intervals: Interval[]): Interval[] {
 }
 
 const WEEK_MS = 7 * 24 * 3_600_000
-function bucketKey(ms: number): number {
-  return Math.floor(ms / WEEK_MS)
+// Anchor weeks to Monday 00:00 in the guild's local time. Unix epoch fell on
+// Thursday UTC, so shift +3 days to land bucket boundaries on Monday, then
+// apply the region offset so a Wed/Thu raid night doesn't split across weeks.
+function bucketKey(ms: number, region: string): number {
+  const offset = REGION_OFFSET[region] ?? 0
+  return Math.floor((ms + offset * 3_600_000 + 3 * 24 * 3_600_000) / WEEK_MS)
 }
 
 const CATEGORIES = ['Weekend Warrior', 'Late Night', 'Evening', 'Afternoon', 'Morning'] as const
@@ -170,7 +174,7 @@ function loadRanked(): GuildData[] {
     const sessions = mergeIntervals(byGuild.get(g.id) ?? [])
     const total_ms = sessions.reduce((s, iv) => s + (iv.last - iv.first), 0)
     if (total_ms === 0) continue
-    const raid_weeks = Math.max(new Set(sessions.map(iv => bucketKey(iv.first))).size, 1)
+    const raid_weeks = Math.max(new Set(sessions.map(iv => bucketKey(iv.first, g.region))).size, 1)
 
     const catFor = (region: string): Category => {
       const hrs = sessions.map(iv => localHour(iv.first, region))

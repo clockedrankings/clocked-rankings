@@ -1,10 +1,8 @@
-import { CLIENT_ID, CLIENT_SECRET, RIO_API_KEY } from '../config.js'
+import { CLIENT_ID, CLIENT_SECRET } from '../config.js'
 import { ensureZones, getAllEncounterIDs } from './zones.js'
 import { syncGuilds } from './guilds.js'
 import { syncReports } from './reports.js'
-import { syncRio } from './rio.js'
 import { RateLimitError, WCLServerError, getLastRateLimit } from '../wcl/client.js'
-import { RioRateLimitError, RioServerError } from '../rio/client.js'
 import { db, setState } from '../db.js'
 
 if (!CLIENT_ID || !CLIENT_SECRET) {
@@ -37,14 +35,7 @@ async function main(): Promise<void> {
   console.log(`  ${ceCount} guilds now have CE`)
   logRateLimit()
 
-  if (RIO_API_KEY) {
-    console.log('→ Supplementing with Raider.IO data for guilds without public WCL logs...')
-    await syncRio()
-  } else {
-    console.log('→ Skipping Raider.IO sync (RIO_API_KEY not set)')
-  }
-
-  console.log('✓ Sync complete')
+  console.log('✓ WCL sync complete (run `npm run sync:rio` to supplement with Raider.IO)')
 }
 
 function touchLastSync(): void {
@@ -62,15 +53,6 @@ main()
     }
     if (err instanceof WCLServerError) {
       console.error(`\n⚠ WCL server returned ${err.status}. Progress saved — will retry next run.`)
-      process.exit(3)
-    }
-    if (err instanceof RioRateLimitError) {
-      touchLastSync()
-      console.error(`\n⚠ Raider.IO rate limit. Progress saved — rerun after ${err.retryAfter}s.`)
-      process.exit(2)
-    }
-    if (err instanceof RioServerError) {
-      console.error(`\n⚠ Raider.IO server returned ${err.status}. Progress saved — will retry next run.`)
       process.exit(3)
     }
     console.error(err)

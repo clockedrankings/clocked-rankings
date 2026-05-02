@@ -46,7 +46,7 @@ jobs:
           restore-keys: |
             clocked-db-
 
-      - name: Sync
+      - name: Sync (WCL)
         env:
           WCL_CLIENT_ID: ${{ secrets.WCL_CLIENT_ID }}
           WCL_CLIENT_SECRET: ${{ secrets.WCL_CLIENT_SECRET }}
@@ -56,7 +56,24 @@ jobs:
           if npm run sync; then rc=0; else rc=$?; fi
           case $rc in
             0|2) ;;
-            3) echo "::warning title=WCL 5xx::Sync exited because WCL returned a 5xx. Build will publish current data." ;;
+            3) echo "::warning title=WCL 5xx::WCL sync exited because WCL returned a 5xx. Continuing to RIO sync." ;;
+            *) exit $rc ;;
+          esac
+
+      - name: Sync (Raider.IO)
+        env:
+          RIO_API_KEY: ${{ secrets.RIO_API_KEY }}
+        # Runs even when WCL is rate-limited so RIO-only guilds keep advancing.
+        # Skips silently if RIO_API_KEY is unset.
+        run: |
+          if [ -z "${RIO_API_KEY}" ]; then
+            echo "::notice title=RIO::RIO_API_KEY not set; skipping Raider.IO sync."
+            exit 0
+          fi
+          if npm run sync:rio; then rc=0; else rc=$?; fi
+          case $rc in
+            0|2) ;;
+            3) echo "::warning title=RIO 5xx::Raider.IO sync exited because RIO returned a 5xx. Build will publish current data." ;;
             *) exit $rc ;;
           esac
 

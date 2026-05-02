@@ -102,6 +102,19 @@ interface GuildData {
 }
 
 function loadRanked(): GuildData[] {
+  // Mythic typically opens a week or two after the tier launches. Heroic/Normal
+  // pulls before Mythic exists shouldn't count toward the Mythic-prog metric
+  // — they'd inflate raid_weeks and dilute hours/week. Use the earliest Mythic
+  // fight against a current-tier encounter as the de-facto Mythic open time
+  // (the fights table also holds M+ and old-tier fights that came in via WCL
+  // reports the guild logged in the same window).
+  const mythicOpenedAt = (db
+    .prepare(
+      `SELECT MIN(start_time) AS t FROM fights
+       WHERE difficulty = 5 AND encounter_id IN (SELECT id FROM encounters)`,
+    )
+    .get() as { t: number | null }).t ?? 0
+
   // All reports for synced guilds count as raid time — Heroic and Normal
   // reports are legit raid nights from the same roster. Mythic-only filter
   // under-counts guilds who farm lower difficulties. Boss kill counts are
@@ -203,7 +216,14 @@ function loadRanked(): GuildData[] {
       : merged
     const total_ms = sessions.reduce((s, iv) => s + (iv.last - iv.first), 0)
     if (total_ms === 0) continue
-    const raid_weeks = Math.max(new Set(sessions.map(iv => bucketKey(iv.first, g.region))).size, 1)
+    // Pre-Mythic Heroic/Normal counts toward total_hours (it's real prep work
+    // — splits, BiS farming) but not toward raid_weeks. Anchoring the
+    // denominator to Mythic open keeps the rate honest.
+    const mythicWindowSessions = sessions.filter(iv => iv.first >= mythicOpenedAt)
+    const raid_weeks = Math.max(
+      new Set(mythicWindowSessions.map(iv => bucketKey(iv.first, g.region))).size,
+      1,
+    )
 
     const catFor = (region: string): Category => {
       const hrs = sessions.map(iv => localHour(iv.first, region))
@@ -415,8 +435,10 @@ export function renderRankingsPage(): string {
         Multi-day reports are split into per-night sessions using fight gaps.</p>
       <p>Total raid time ÷ distinct raid weeks (7-day buckets in which the guild raided).
         Off-weeks don't dilute the average.</p>
-      <p>All tier reports count toward raid time: Normal, Heroic, and Mythic. Boss
-        kills only count from Mythic.</p>
+      <p>All tier reports count toward raid time: Normal, Heroic, and Mythic
+        (splits and BiS farm are real prep work). Boss kills only count from
+        Mythic. The weeks denominator only counts weeks during the Mythic-prog
+        window — pre-Mythic weeks don't dilute the rate.</p>
       <h3>Before CE</h3>
       <p>For guilds with Cutting Edge (Midnight Falls Mythic kill), reports after their
         CE timestamp are excluded. Stat stays frozen once achieved. For guilds still

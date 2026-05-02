@@ -20,11 +20,11 @@ export class RioServerError extends Error {
   }
 }
 
-// Pace requests to stay under Raider.IO's per-key throttle. Unauthenticated
-// is documented as 200/min; with a key it's higher but unspecified. 300ms
-// between calls (~200/min) is well within both. Bursting hit a 403
-// "Access Denied" anti-abuse response after ~90 calls in <30s.
-const MIN_INTERVAL_MS = 300
+// Pace requests under Raider.IO's per-key throttle. Authenticated keys are
+// documented at 1000/min; 80ms (~750/min) leaves headroom while keeping
+// total runtime reasonable. Anti-abuse can still 403 on bursts so we throw
+// RioRateLimitError on 403 and let the cursor resume on the next run.
+const MIN_INTERVAL_MS = 80
 let lastCallAt = 0
 
 async function rioGet<T>(path: string, params: Record<string, string | number | undefined>): Promise<T> {

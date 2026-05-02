@@ -250,8 +250,14 @@ export async function syncRio(opts: { verbose?: boolean } = {}): Promise<void> {
     setState(PULL_STATE_KEY, String(guildId))
 
     let nonEmpty = false
-    const diffCounts: Record<string, number> = {}
+    const diffCounts: Record<string, number> = { mythic: 0, heroic: 0, normal: 0 }
     for (const diff of DIFFICULTIES) {
+      // Short-circuit: if Mythic (the first difficulty) returned no pulls,
+      // this guild isn't in the Desktop App pool. Skip Heroic/Normal — they'd
+      // be empty too, and we'd rather save the API budget for real ingest.
+      // Candidates here all have at least one Mythic kill (raid-rankings
+      // filters to Mythic), so an absent Mythic pool means absent overall.
+      if (diff.name !== 'mythic' && !nonEmpty) break
       const data = await fetchRaidPulls({
         region: rio.region.slug,
         realm: rio.realm.slug,

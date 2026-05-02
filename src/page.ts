@@ -217,13 +217,13 @@ function loadRanked(): GuildData[] {
     const total_ms = sessions.reduce((s, iv) => s + (iv.last - iv.first), 0)
     if (total_ms === 0) continue
     // Pre-Mythic Heroic/Normal counts toward total_hours (it's real prep work
-    // — splits, BiS farming) but not toward raid_weeks. Anchoring the
-    // denominator to Mythic open keeps the rate honest.
-    const mythicWindowSessions = sessions.filter(iv => iv.first >= mythicOpenedAt)
-    const raid_weeks = Math.max(
-      new Set(mythicWindowSessions.map(iv => bucketKey(iv.first, g.region))).size,
-      1,
-    )
+    // — splits, BiS farming) but not toward raid_weeks. Anchor the denominator
+    // to elapsed time from Mythic open: ceil((progEnd - mythicOpenedAt) / 7d).
+    // Rate measures "intensity per Mythic-prog week," not calendar buckets.
+    const latestEnd = sessions.reduce((m, iv) => Math.max(m, iv.last), 0)
+    const progEnd = g.ce_achieved_at ?? latestEnd
+    const elapsedMs = Math.max(progEnd - mythicOpenedAt, 0)
+    const raid_weeks = Math.max(Math.ceil(elapsedMs / (7 * 24 * 3_600_000)), 1)
 
     const catFor = (region: string): Category => {
       const hrs = sessions.map(iv => localHour(iv.first, region))
@@ -433,8 +433,9 @@ export function renderRankingsPage(): string {
         we take the full pull window, including wipes, trash, and breaks between
         pulls. Overlapping reports (kill-only logs on top of full logs) are merged.
         Multi-day reports are split into per-night sessions using fight gaps.</p>
-      <p>Total raid time ÷ distinct raid weeks (7-day buckets in which the guild raided).
-        Off-weeks don't dilute the average.</p>
+      <p>Total raid time ÷ Mythic-prog weeks (elapsed time from Mythic open
+        to CE — or to most recent activity for guilds still progressing —
+        rounded up to whole weeks).</p>
       <p>All tier reports count toward raid time: Normal, Heroic, and Mythic
         (splits and BiS farm are real prep work). Boss kills only count from
         Mythic. The weeks denominator only counts weeks during the Mythic-prog

@@ -434,12 +434,12 @@ export function renderRankingsPage(): string {
         pulls. Overlapping reports (kill-only logs on top of full logs) are merged.
         Multi-day reports are split into per-night sessions using fight gaps.</p>
       <p>Total raid time ÷ Mythic-prog weeks (elapsed time from Mythic open
-        to CE — or to most recent activity for guilds still progressing —
+        to CE, or to most recent activity for guilds still progressing,
         rounded up to whole weeks).</p>
       <p>All tier reports count toward raid time: Normal, Heroic, and Mythic
         (splits and BiS farm are real prep work). Boss kills only count from
         Mythic. The weeks denominator only counts weeks during the Mythic-prog
-        window — pre-Mythic weeks don't dilute the rate.</p>
+        window, so pre-Mythic weeks don't dilute the rate.</p>
       <h3>Before CE</h3>
       <p>For guilds with Cutting Edge (Midnight Falls Mythic kill), reports after their
         CE timestamp are excluded. Stat stays frozen once achieved. For guilds still

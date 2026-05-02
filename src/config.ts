@@ -7,6 +7,8 @@ export const CLIENT_ID = process.env.WCL_CLIENT_ID ?? ''
 export const CLIENT_SECRET = process.env.WCL_CLIENT_SECRET ?? ''
 export const REDIRECT_URI = `http://localhost:${PORT}/callback`
 
+export const RIO_API_KEY = process.env.RIO_API_KEY ?? ''
+
 export const CONFIG_DIR = path.join(os.homedir(), '.config', 'guild-rankings-by-day')
 export const TOKEN_PATH = path.join(CONFIG_DIR, 'token.json')
 export const DB_PATH = process.env.DB_PATH ?? path.join(CONFIG_DIR, 'data.db')
@@ -14,6 +16,9 @@ export const DB_PATH = process.env.DB_PATH ?? path.join(CONFIG_DIR, 'data.db')
 export const WCL_AUTHORIZE_URL = 'https://www.warcraftlogs.com/oauth/authorize'
 export const WCL_TOKEN_URL = 'https://www.warcraftlogs.com/oauth/token'
 export const WCL_API_URL = 'https://www.warcraftlogs.com/api/v2/client'
+
+export const RIO_API_URL = 'https://raider.io/api/v1'
+export const RIO_TIER_SLUG = 'tier-mn-1'
 
 export const TIER_ZONE_NAME = 'VS / DR / MQD'
 

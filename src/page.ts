@@ -37,6 +37,9 @@ function circularMeanHour(hours: number[]): number {
 const MAX_SINGLE_DAY_MS = 14 * 3_600_000
 // Gap threshold for splitting fights within a multi-day report.
 const MULTI_DAY_GAP_MS = 4 * 3_600_000
+// RIO captures only boss-pull intervals — no trash, prep, or post-kill cleanup.
+// Pad each RIO session at the end to roughly compensate for the missing time.
+const RIO_SESSION_PAD_MS = 15 * 60_000
 
 function mergeIntervals(intervals: Interval[]): Interval[] {
   if (intervals.length === 0) return []
@@ -77,11 +80,17 @@ type TZKey = (typeof TZ_KEYS)[number]
 
 interface GuildData {
   id: number
+  wcl_id: number | null
+  rio_id: number | null
   name: string
   server_name: string | null
+  server_slug: string
   region: string
   ce_achieved_at: number | null
-  reports_synced_at: number | null
+  synced_at: number | null
+  via_wcl: 0 | 1
+  via_rio: 0 | 1
+  data_source: 'wcl' | 'rio'
   total_hours: number
   hours_per_week: number
   raid_nights: number
@@ -103,7 +112,7 @@ function loadRanked(): GuildData[] {
       FROM reports r
       JOIN guilds g ON g.id = r.guild_id
       WHERE r.first_pull IS NOT NULL AND r.last_pull IS NOT NULL
-        AND g.reports_synced_at IS NOT NULL
+        AND (g.wcl_updated_at IS NOT NULL OR g.rio_updated_at IS NOT NULL)
         AND (g.ce_achieved_at IS NULL OR r.first_pull <= g.ce_achieved_at)
     `)
     .all() as { guild_id: number; code: string; first_pull: number; last_pull: number }[]
@@ -127,8 +136,13 @@ function loadRanked(): GuildData[] {
   }
 
   const byGuild = new Map<number, Interval[]>()
+  // Phase 1 invariant: a guild's data is from exactly one source. Track per
+  // guild so we can pad RIO sessions and flag the row in the UI.
+  const sourceByGuild = new Map<number, 'wcl' | 'rio'>()
   for (const r of reports) {
     const arr = byGuild.get(r.guild_id) ?? []
+    const isRio = r.code.startsWith('rio:')
+    if (!sourceByGuild.has(r.guild_id)) sourceByGuild.set(r.guild_id, isRio ? 'rio' : 'wcl')
     if (r.last_pull - r.first_pull <= MAX_SINGLE_DAY_MS) {
       arr.push({ first: r.first_pull, last: r.last_pull })
     } else {
@@ -150,13 +164,16 @@ function loadRanked(): GuildData[] {
 
   const guilds = db
     .prepare(
-      `SELECT id, name, server_name, region, ce_achieved_at,
-              reports_synced_at * 1000 AS reports_synced_at
-       FROM guilds WHERE reports_synced_at IS NOT NULL`,
+      `SELECT id, wcl_id, rio_id, name, server_name, server_slug, region, ce_achieved_at,
+              MAX(IFNULL(wcl_updated_at, 0), IFNULL(rio_updated_at, 0)) * 1000 AS synced_at,
+              (wcl_updated_at IS NOT NULL) AS via_wcl,
+              (rio_updated_at IS NOT NULL) AS via_rio
+       FROM guilds
+       WHERE wcl_updated_at IS NOT NULL OR rio_updated_at IS NOT NULL`,
     )
     .all() as Pick<
       GuildData,
-      'id' | 'name' | 'server_name' | 'region' | 'ce_achieved_at' | 'reports_synced_at'
+      'id' | 'wcl_id' | 'rio_id' | 'name' | 'server_name' | 'server_slug' | 'region' | 'ce_achieved_at' | 'synced_at' | 'via_wcl' | 'via_rio'
     >[]
 
   const bossRows = db
@@ -171,7 +188,11 @@ function loadRanked(): GuildData[] {
 
   const out: GuildData[] = []
   for (const g of guilds) {
-    const sessions = mergeIntervals(byGuild.get(g.id) ?? [])
+    const data_source = sourceByGuild.get(g.id) ?? 'wcl'
+    const merged = mergeIntervals(byGuild.get(g.id) ?? [])
+    const sessions = data_source === 'rio'
+      ? merged.map(iv => ({ first: iv.first, last: iv.last + RIO_SESSION_PAD_MS }))
+      : merged
     const total_ms = sessions.reduce((s, iv) => s + (iv.last - iv.first), 0)
     if (total_ms === 0) continue
     const raid_weeks = Math.max(new Set(sessions.map(iv => bucketKey(iv.first, g.region))).size, 1)
@@ -189,6 +210,7 @@ function loadRanked(): GuildData[] {
     const total_hours = total_ms / 3_600_000
     out.push({
       ...g,
+      data_source,
       total_hours,
       hours_per_week: total_hours / raid_weeks,
       raid_nights: sessions.length,
@@ -295,6 +317,10 @@ export function renderRankingsPage(): string {
     .guild-link:hover { color: #d4a017; border-bottom-color: #d4a017; }
     .category-pill { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px;
       background: #1f2937; color: #cbd5e1; border: 1px solid #2d3748; }
+    .source-pill { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 4px;
+      font-weight: 600; letter-spacing: 0.04em; margin-right: 4px; vertical-align: 1px; }
+    .source-wcl { background: #1e3a5f; color: #93c5fd; border: 1px solid #2a4a73; }
+    .source-rio { background: #4a2c1a; color: #fdba74; border: 1px solid #6b3a22; }
     h1 { margin-bottom: 0.25rem; color: #f3f4f6; }
     h1 .tagline { font-size: 0.55em; font-weight: 400; color: #9ca3af; }
     .sub { color: #9ca3af; margin-bottom: 1.5rem; }
@@ -334,6 +360,8 @@ export function renderRankingsPage(): string {
     .credit { color: #6b7280; font-size: 12px; }
     .credit a { color: #d4a017; text-decoration: none; }
     .credit a:hover { text-decoration: underline; }
+    .modal-panel a { color: #d4a017; text-decoration: none; }
+    .modal-panel a:hover { text-decoration: underline; }
     .modal[hidden] { display: none; }
     .modal { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center;
       justify-content: center; padding: 1rem; }
@@ -357,7 +385,7 @@ export function renderRankingsPage(): string {
   <div class="header">
     <h1>Clocked <span class="tagline">— hours raided before CE</span></h1>
     <span class="credit">
-      ${lastSync ? `last sync: ${escapeHtml(lastSync)} · ` : ''}<a href="#" id="how-link">how it works</a> · made by Bredie · Area 52 &lt;Death Jesters&gt;
+      ${lastSync ? `last sync: ${escapeHtml(lastSync)} · ` : ''}<a href="#" id="how-link">how it works</a> · made by Bredie · Area 52 &lt;Death Jesters&gt; · data: <a href="https://www.warcraftlogs.com" target="_blank" rel="noopener">WarcraftLogs</a>, <a href="https://raider.io" target="_blank" rel="noopener">Raider.IO</a>
     </span>
   </div>
 
@@ -368,16 +396,18 @@ export function renderRankingsPage(): string {
       <h2 id="how-title">How Clocked works</h2>
       <h3>What's ranked</h3>
       <p>Every WoW guild that has killed at least one boss on Mythic difficulty in the
-        current tier (Voidspire / Dreamrift / March on Quel'danas). Guilds with
-        private logs won't appear.</p>
+        current tier (Voidspire / Dreamrift / March on Quel'danas) and either publicly
+        logs to <a href="https://www.warcraftlogs.com" target="_blank" rel="noopener">WarcraftLogs</a>
+        or uses the <a href="https://raider.io" target="_blank" rel="noopener">Raider.IO</a>
+        Desktop App. Guilds with neither won't appear.</p>
       <h3>Hours / week</h3>
       <p>For each raid session (first boss pull to last boss pull of the night),
-        we take the full pull window — including wipes, trash, and breaks between
+        we take the full pull window, including wipes, trash, and breaks between
         pulls. Overlapping reports (kill-only logs on top of full logs) are merged.
         Multi-day reports are split into per-night sessions using fight gaps.</p>
       <p>Total raid time ÷ distinct raid weeks (7-day buckets in which the guild raided).
         Off-weeks don't dilute the average.</p>
-      <p>All tier reports count toward raid time — Normal, Heroic, and Mythic. Boss
+      <p>All tier reports count toward raid time: Normal, Heroic, and Mythic. Boss
         kills only count from Mythic.</p>
       <h3>Before CE</h3>
       <p>For guilds with Cutting Edge (Midnight Falls Mythic kill), reports after their
@@ -397,7 +427,8 @@ export function renderRankingsPage(): string {
         show compressed pull windows.<br>
         • Guilds running separate Mythic + Heroic teams may over-count (both teams'
         reports are summed).<br>
-        • Data is pulled from WarcraftLogs — bad logs in means bad data out.</p>
+        • Data is pulled from <a href="https://www.warcraftlogs.com" target="_blank" rel="noopener">WarcraftLogs</a>
+        and <a href="https://raider.io" target="_blank" rel="noopener">Raider.IO</a> — bad logs in means bad data out.</p>
       <p class="muted">Updated roughly once a day.</p>
     </div>
   </div>
@@ -467,8 +498,14 @@ export function renderRankingsPage(): string {
       function fmtDate(ms) {
         return ms == null ? '—' : new Date(ms).toISOString().slice(0, 10);
       }
-      function guildUrl(id) {
-        return 'https://www.warcraftlogs.com/guild/id/' + id;
+      function fmtH(g, val) {
+        const s = val.toFixed(1);
+        return g.data_source === 'rio' ? '~' + s : s;
+      }
+      function guildUrl(g) {
+        if (g.wcl_id) return 'https://www.warcraftlogs.com/guild/id/' + g.wcl_id;
+        if (g.rio_id) return 'https://raider.io/guilds/' + g.region + '/' + g.server_slug + '/' + encodeURIComponent(g.name);
+        return '#';
       }
 
       function readFilters() {
@@ -520,9 +557,9 @@ export function renderRankingsPage(): string {
         const fastestProg = qualified.slice().sort((a, b) => b.bosses / Math.max(b.raid_weeks, 1) - a.bosses / Math.max(a.raid_weeks, 1))[0];
         return [
           { label: 'Most Efficient', guild: mostEfficient, value: (mostEfficient.bosses / mostEfficient.total_hours).toFixed(2) + ' bosses/hour' },
-          { label: 'Grindiest', guild: grindiest, value: grindiest.hours_per_week.toFixed(1) + ' h/week' },
+          { label: 'Grindiest', guild: grindiest, value: fmtH(grindiest, grindiest.hours_per_week) + ' h/week' },
           { label: 'Fastest Progression', guild: fastestProg, value: (fastestProg.bosses / Math.max(fastestProg.raid_weeks, 1)).toFixed(1) + ' bosses/week' },
-          { label: 'Marathon Night', guild: marathonNight, value: marathonNight.longest_night_hours.toFixed(1) + 'h session' },
+          { label: 'Marathon Night', guild: marathonNight, value: fmtH(marathonNight, marathonNight.longest_night_hours) + 'h session' },
           { label: 'Most Nights', guild: mostDisciplined, value: mostDisciplined.raid_nights + ' nights' },
         ];
       }
@@ -531,7 +568,7 @@ export function renderRankingsPage(): string {
         const awards = superlatives(rows);
         const html = awards.map(a => \`<div class="award">
           <div class="award-label">\${esc(a.label)}</div>
-          <div class="award-guild"><a class="guild-link" href="\${guildUrl(a.guild.id)}" target="_blank" rel="noopener">\${esc(a.guild.name)}</a></div>
+          <div class="award-guild"><a class="guild-link" href="\${guildUrl(a.guild)}" target="_blank" rel="noopener">\${esc(a.guild.name)}</a></div>
           <div class="award-meta">\${esc(a.guild.server_name ?? '')} <span class="muted">\${esc(a.guild.region)}</span></div>
           <div class="award-value">\${esc(a.value)}</div>
         </div>\`).join('');
@@ -552,16 +589,16 @@ export function renderRankingsPage(): string {
         // Batch DOM update
         const html = rows.map((r, i) => \`<tr>
           <td>\${i + 1}</td>
-          <td><a class="guild-link" href="\${guildUrl(r.id)}" target="_blank" rel="noopener">\${esc(r.name)}</a></td>
+          <td><a class="guild-link" href="\${guildUrl(r)}" target="_blank" rel="noopener">\${esc(r.name)}</a></td>
           <td>\${esc(r.server_name ?? '')} <span class="muted">\${esc(r.region)}</span></td>
           <td><span class="category-pill">\${esc(categoryFor(r, CURRENT_TZ))}</span></td>
           <td class="num">\${r.bosses}/9</td>
-          <td class="num">\${r.hours_per_week.toFixed(1)}</td>
-          <td class="num">\${r.total_hours.toFixed(1)}</td>
+          <td class="num">\${fmtH(r, r.hours_per_week)}</td>
+          <td class="num">\${fmtH(r, r.total_hours)}</td>
           <td class="num">\${r.raid_nights}</td>
           <td class="num">\${r.raid_weeks}</td>
           <td>\${r.ce_achieved_at !== null ? fmtDate(r.ce_achieved_at) : '<span class="progress">—</span>'}</td>
-          <td><span class="muted">\${fmtDate(r.reports_synced_at)}</span></td>
+          <td>\${r.via_wcl ? '<span class="source-pill source-wcl">WCL</span>' : ''}\${r.via_rio ? '<span class="source-pill source-rio">RIO</span>' : ''}<span class="muted">\${fmtDate(r.synced_at)}</span></td>
         </tr>\`).join('');
         tbody.innerHTML = html;
       }

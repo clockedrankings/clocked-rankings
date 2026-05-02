@@ -28,13 +28,16 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS guilds (
     id INTEGER PRIMARY KEY,
+    wcl_id INTEGER,
+    rio_id INTEGER,
     name TEXT NOT NULL,
     server_slug TEXT NOT NULL,
     server_name TEXT,
     region TEXT NOT NULL,
     faction TEXT,
     ce_achieved_at INTEGER,
-    reports_synced_at INTEGER,
+    wcl_updated_at INTEGER,
+    rio_updated_at INTEGER,
     discovered_at INTEGER NOT NULL DEFAULT (unixepoch())
   );
 
@@ -79,6 +82,25 @@ db.exec(`
     value TEXT NOT NULL,
     updated_at INTEGER NOT NULL DEFAULT (unixepoch())
   );
+`)
+
+const guildCols = new Set(
+  (db.prepare('PRAGMA table_info(guilds)').all() as { name: string }[]).map(c => c.name),
+)
+if (!guildCols.has('wcl_id')) {
+  db.exec(`
+    ALTER TABLE guilds ADD COLUMN wcl_id INTEGER;
+    ALTER TABLE guilds ADD COLUMN rio_id INTEGER;
+    ALTER TABLE guilds ADD COLUMN wcl_updated_at INTEGER;
+    ALTER TABLE guilds ADD COLUMN rio_updated_at INTEGER;
+    UPDATE guilds SET wcl_id = id, wcl_updated_at = reports_synced_at WHERE wcl_id IS NULL;
+  `)
+}
+
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_guilds_wcl_id ON guilds(wcl_id) WHERE wcl_id IS NOT NULL;
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_guilds_rio_id ON guilds(rio_id) WHERE rio_id IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS idx_guilds_match ON guilds(region, server_slug, name);
 `)
 
 export function getState(key: string): string | null {

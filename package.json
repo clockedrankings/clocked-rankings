@@ -6,6 +6,7 @@
     "start": "tsx src/cli.ts",
     "dev": "tsx watch src/cli.ts",
     "sync": "tsx src/sync/run.ts",
+    "sync:rio": "tsx src/sync/run-rio.ts",
     "build": "STATIC_BUILD=1 tsx src/build.ts",
     "credits": "tsx scripts/credits.ts"
   },

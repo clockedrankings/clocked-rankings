@@ -5,7 +5,7 @@ const reports = db
     SELECT r.guild_id, g.name, g.server_name, g.region, r.code, r.first_pull, r.last_pull
     FROM reports r JOIN guilds g ON g.id = r.guild_id
     WHERE r.first_pull IS NOT NULL AND r.last_pull IS NOT NULL
-      AND g.reports_synced_at IS NOT NULL
+      AND (g.wcl_updated_at IS NOT NULL OR g.rio_updated_at IS NOT NULL)
     ORDER BY r.guild_id, r.first_pull
   `)
   .all() as Array<{

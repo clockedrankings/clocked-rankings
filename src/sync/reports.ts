@@ -29,8 +29,8 @@ function pendingGuilds(): PendingGuild[] {
   return db
     .prepare(`
       SELECT id, name FROM guilds
-      WHERE ce_achieved_at IS NULL
-      ORDER BY reports_synced_at IS NOT NULL, reports_synced_at, id
+      WHERE ce_achieved_at IS NULL AND wcl_id IS NOT NULL
+      ORDER BY wcl_updated_at IS NOT NULL, wcl_updated_at, id
     `)
     .all() as PendingGuild[]
 }
@@ -61,7 +61,7 @@ const upsertKill = db.prepare(`
     report_code = CASE WHEN excluded.killed_at < killed_at THEN excluded.report_code ELSE report_code END
 `)
 
-const markSynced = db.prepare('UPDATE guilds SET reports_synced_at = unixepoch() WHERE id = ?')
+const markSynced = db.prepare('UPDATE guilds SET wcl_updated_at = unixepoch() WHERE id = ?')
 const markCE = db.prepare('UPDATE guilds SET ce_achieved_at = ? WHERE id = ?')
 
 const reportAlreadyFetched = db.prepare('SELECT 1 FROM reports WHERE code = ?')

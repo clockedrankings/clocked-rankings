@@ -29,7 +29,7 @@ const ce = (db.prepare('SELECT COUNT(*) as c FROM guilds WHERE ce_achieved_at IS
   c: number
 }).c
 const synced = (db
-  .prepare('SELECT COUNT(*) as c FROM guilds WHERE reports_synced_at IS NOT NULL')
+  .prepare('SELECT COUNT(*) as c FROM guilds WHERE wcl_updated_at IS NOT NULL')
   .get() as { c: number }).c
 
 console.log('')

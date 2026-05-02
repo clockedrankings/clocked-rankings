@@ -33,7 +33,7 @@ The static site is generated and published by GitHub Actions:
 ## Local development
 
 ```sh
-cp .env.example .env  # fill in WCL_CLIENT_ID and WCL_CLIENT_SECRET
+cp .env.example .env  # fill in WCL_CLIENT_ID, WCL_CLIENT_SECRET, RIO_API_KEY
 docker compose up -d  # http://localhost:3457
 ```
 

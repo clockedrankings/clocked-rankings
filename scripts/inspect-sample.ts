@@ -8,7 +8,7 @@ const guilds = db
       MIN(r.first_pull) AS first, MAX(r.last_pull) AS last
     FROM guilds g
     LEFT JOIN reports r ON r.guild_id = g.id
-    WHERE g.reports_synced_at IS NOT NULL
+    WHERE g.wcl_updated_at IS NOT NULL OR g.rio_updated_at IS NOT NULL
     GROUP BY g.id
     ORDER BY reports DESC
   `)

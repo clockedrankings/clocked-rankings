@@ -11,7 +11,8 @@ const guild = db
     server_name: string
     region: string
     ce_achieved_at: number | null
-    reports_synced_at: number | null
+    wcl_updated_at: number | null
+    rio_updated_at: number | null
   } | undefined
 
 if (!guild) {
@@ -23,9 +24,10 @@ if (!guild) {
   process.exit(1)
 }
 
+const synced = guild.wcl_updated_at || guild.rio_updated_at
 console.log(`${guild.name} — ${guild.region}-${guild.server_name}  (id=${guild.id})`)
 console.log(`  CE: ${guild.ce_achieved_at ? new Date(guild.ce_achieved_at).toISOString() : '—'}`)
-console.log(`  synced: ${guild.reports_synced_at ? 'yes' : 'no'}`)
+console.log(`  synced: ${synced ? 'yes' : 'no'} (wcl=${guild.wcl_updated_at ? 'y' : 'n'} rio=${guild.rio_updated_at ? 'y' : 'n'})`)
 console.log('')
 
 const reports = db

@@ -34,9 +34,9 @@ export async function syncGuilds(encounterIDs: number[]): Promise<void> {
   const cp = loadCheckpoint()
 
   const insertGuild = db.prepare(`
-    INSERT INTO guilds (id, name, server_slug, server_name, region, faction)
-    VALUES (@id, @name, @server_slug, @server_name, @region, @faction)
-    ON CONFLICT(id) DO NOTHING
+    INSERT INTO guilds (id, wcl_id, name, server_slug, server_name, region, faction)
+    VALUES (@id, @id, @name, @server_slug, @server_name, @region, @faction)
+    ON CONFLICT(id) DO UPDATE SET wcl_id = excluded.wcl_id WHERE wcl_id IS NULL
   `)
 
   for (let pi = cp.partitionIdx; pi < partitionIDs.length; pi++) {

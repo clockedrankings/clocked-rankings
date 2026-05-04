@@ -16,6 +16,11 @@ const RANKINGS_PAGE_SIZE = 200
 const RIO_ID_SIGN = -1
 
 const PULL_STATE_KEY = 'rio_pull_cursor'
+const RANKINGS_CACHE_KEY = 'rio_rankings_cache'
+const RANKINGS_CACHE_AT_KEY = 'rio_rankings_cache_at'
+// Raid rankings move slowly. A daily refresh is plenty and saves ~28 calls
+// per cron tick across the 5-min schedule.
+const RANKINGS_TTL_SECS = 24 * 3600
 
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
@@ -194,50 +199,103 @@ interface QueuedGuild {
   rio: RioGuildSummary
 }
 
-async function discoverCandidates(verbose: boolean): Promise<QueuedGuild[]> {
-  // Discovery is idempotent and lightweight enough that we re-run it from
-  // scratch on every sync. The pull-ingest step is what we checkpoint.
-  const queued: QueuedGuild[] = []
-  const seen = new Set<number>()
-  const ttlCutoff = Math.floor(Date.now() / 1000) - NO_DATA_TTL_SECS
+interface CachedRanking {
+  id: number
+  name: string
+  faction: 'horde' | 'alliance' | null
+  region: string
+  realm: string
+  realmName: string
+}
 
+async function fetchAllRankings(verbose: boolean): Promise<CachedRanking[]> {
+  const all: CachedRanking[] = []
+  const seen = new Set<number>()
   for (const region of REGIONS) {
     let page = 0
-    let regionTotal = 0
-    let regionWcl = 0
-    let regionEmptyCache = 0
+    let count = 0
     while (true) {
       const data = await fetchRaidRankings(region, page, RANKINGS_PAGE_SIZE)
       const rankings = data?.raidRankings ?? []
       if (rankings.length === 0) break
-
       for (const r of rankings) {
         if (!r.guild?.id || !r.guild.realm?.slug) continue
         if (seen.has(r.guild.id)) continue
         seen.add(r.guild.id)
-        regionTotal += 1
-        const summary: RioGuildSummary = {
-          ...r.guild,
-          realm: { ...r.guild.realm, slug: slugify(r.guild.realm.slug) },
-        }
-        const resolved = resolveGuild(summary)
-        if (resolved.isWclCovered) {
-          regionWcl += 1
-          continue
-        }
-        if (isRecentlyEmpty.get(resolved.id, ttlCutoff)) {
-          regionEmptyCache += 1
-          continue
-        }
-        queued.push({ guildId: resolved.id, rio: summary })
+        all.push({
+          id: r.guild.id,
+          name: r.guild.name,
+          faction: r.guild.faction,
+          region: r.guild.region.slug,
+          realm: slugify(r.guild.realm.slug),
+          realmName: r.guild.realm.name,
+        })
+        count += 1
       }
-
       if (rankings.length < RANKINGS_PAGE_SIZE) break
       page += 1
     }
-    if (verbose) {
-      const candidates = regionTotal - regionWcl - regionEmptyCache
-      console.log(`    ${region}: ${regionTotal} ranked (${regionWcl} on WCL, ${regionEmptyCache} no-data cached, ${candidates} candidates)`)
+    if (verbose) console.log(`    ${region}: ${count} ranked`)
+  }
+  return all
+}
+
+async function getRankings(verbose: boolean): Promise<CachedRanking[]> {
+  const cachedAtRaw = getState(RANKINGS_CACHE_AT_KEY)
+  const cachedAt = cachedAtRaw ? parseInt(cachedAtRaw, 10) : 0
+  const ageSecs = Math.floor(Date.now() / 1000) - cachedAt
+  if (cachedAt > 0 && ageSecs < RANKINGS_TTL_SECS) {
+    const raw = getState(RANKINGS_CACHE_KEY)
+    if (raw) {
+      const cached = JSON.parse(raw) as CachedRanking[]
+      if (verbose) {
+        console.log(`  Using cached raid-rankings (${cached.length} guilds, ${Math.round(ageSecs / 3600)}h old; refresh in ${Math.round((RANKINGS_TTL_SECS - ageSecs) / 3600)}h)`)
+      }
+      return cached
+    }
+  }
+  if (verbose) console.log('  Refreshing raid-rankings from Raider.IO...')
+  const fresh = await fetchAllRankings(verbose)
+  setState(RANKINGS_CACHE_KEY, JSON.stringify(fresh))
+  setState(RANKINGS_CACHE_AT_KEY, String(Math.floor(Date.now() / 1000)))
+  return fresh
+}
+
+function buildCandidateQueue(rankings: CachedRanking[], verbose: boolean): QueuedGuild[] {
+  // Filters (WCL coverage, no-data TTL) are re-applied every run since their
+  // state changes between cache refreshes.
+  const queued: QueuedGuild[] = []
+  const ttlCutoff = Math.floor(Date.now() / 1000) - NO_DATA_TTL_SECS
+  const counts: Record<string, { total: number; wcl: number; empty: number }> = {}
+  for (const region of REGIONS) counts[region] = { total: 0, wcl: 0, empty: 0 }
+
+  for (const r of rankings) {
+    const c = counts[r.region]
+    if (c) c.total += 1
+    const summary: RioGuildSummary = {
+      id: r.id,
+      name: r.name,
+      faction: r.faction,
+      region: { slug: r.region },
+      realm: { slug: r.realm, name: r.realmName },
+    }
+    const resolved = resolveGuild(summary)
+    if (resolved.isWclCovered) {
+      if (c) c.wcl += 1
+      continue
+    }
+    if (isRecentlyEmpty.get(resolved.id, ttlCutoff)) {
+      if (c) c.empty += 1
+      continue
+    }
+    queued.push({ guildId: resolved.id, rio: summary })
+  }
+
+  if (verbose) {
+    for (const region of REGIONS) {
+      const c = counts[region]
+      const candidates = c.total - c.wcl - c.empty
+      console.log(`    ${region}: ${c.total} ranked (${c.wcl} on WCL, ${c.empty} no-data cached, ${candidates} candidates)`)
     }
   }
   return queued
@@ -247,8 +305,8 @@ export async function syncRio(opts: { verbose?: boolean } = {}): Promise<void> {
   const verbose = opts.verbose ?? false
   const ceGateIDs = getCEGateEncounterIDs()
 
-  if (verbose) console.log('  Discovering Mythic-ranked guilds across regions...')
-  const queued = await discoverCandidates(verbose)
+  const rankings = await getRankings(verbose)
+  const queued = buildCandidateQueue(rankings, verbose)
   console.log(`  ${queued.length} RIO-only candidate guilds discovered`)
 
   const pullCursor = getState(PULL_STATE_KEY)

@@ -42,9 +42,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.config/guild-rankings-by-day/data.db
-          key: clocked-db-${{ github.run_id }}
+          key: clocked-db-mn2-${{ github.run_id }}
           restore-keys: |
-            clocked-db-
+            clocked-db-mn2-
 
       - name: Sync (WCL)
         env:
@@ -82,7 +82,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/.config/guild-rankings-by-day/data.db
-          key: clocked-db-${{ github.run_id }}
+          key: clocked-db-mn2-${{ github.run_id }}
 
       - name: Build static HTML
         run: npm run build

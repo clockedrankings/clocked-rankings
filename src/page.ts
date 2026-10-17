@@ -1,4 +1,5 @@
 import { db, getState } from './db.js'
+import { TIER_ENCOUNTER_IDS } from './config.js'
 
 interface Interval {
   first: number
@@ -271,6 +272,8 @@ function fmtLastSync(): string {
   return d.toISOString().replace('T', ' ').slice(0, 16) + ' UTC'
 }
 
+const TIER_BOSS_COUNT = TIER_ENCOUNTER_IDS.length
+
 export function renderRankingsPage(): string {
   const data = loadRanked()
   const lastSync = fmtLastSync()
@@ -424,7 +427,7 @@ export function renderRankingsPage(): string {
       <h2 id="how-title">How Clocked works</h2>
       <h3>What's ranked</h3>
       <p>Every WoW guild that has killed at least one boss on Mythic difficulty in the
-        current tier (Voidspire / Dreamrift / March on Quel'danas) and either publicly
+        current tier (The Venomous Abyss) and either publicly
         logs to <a href="https://www.warcraftlogs.com" target="_blank" rel="noopener">WarcraftLogs</a>
         or uses the <a href="https://raider.io" target="_blank" rel="noopener">Raider.IO</a>
         Desktop App. Guilds with neither won't appear.</p>
@@ -441,7 +444,7 @@ export function renderRankingsPage(): string {
         Mythic. The weeks denominator only counts weeks during the Mythic-prog
         window, so pre-Mythic weeks don't dilute the rate.</p>
       <h3>Before CE</h3>
-      <p>For guilds with Cutting Edge (Midnight Falls Mythic kill), reports after their
+      <p>For guilds with Cutting Edge (Ula'tek Mythic kill), reports after their
         CE timestamp are excluded. Stat stays frozen once achieved. For guilds still
         progressing, all reports up to the most recent sync count.</p>
       <h3>Categories</h3>
@@ -494,7 +497,7 @@ export function renderRankingsPage(): string {
       <input type="number" step="0.1" name="max_hours" style="width: 90px;">
     </label>
     <label><span>Min bosses (≥ <span class="slider-value" id="min-bosses-value">0</span>)</span>
-      <input type="range" id="min-bosses" min="0" max="9" step="1" value="0">
+      <input type="range" id="min-bosses" min="0" max="${TIER_BOSS_COUNT}" step="1" value="0">
     </label>
     <button type="submit">Apply</button>
     <a class="clear" href="#" id="clear-filters">Clear</a>
@@ -623,7 +626,7 @@ export function renderRankingsPage(): string {
           <td><a class="guild-link" href="\${guildUrl(r)}" target="_blank" rel="noopener">\${esc(r.name)}</a></td>
           <td>\${esc(r.server_name ?? '')} <span class="muted">\${esc(r.region)}</span></td>
           <td><span class="category-pill">\${esc(categoryFor(r, CURRENT_TZ))}</span></td>
-          <td class="num">\${r.bosses}/9</td>
+          <td class="num">\${r.bosses}/${TIER_BOSS_COUNT}</td>
           <td class="num">\${fmtH(r, r.hours_per_week)}</td>
           <td class="num">\${fmtH(r, r.total_hours)}</td>
           <td class="num">\${r.raid_nights}</td>

@@ -18,22 +18,32 @@ export const WCL_TOKEN_URL = 'https://www.warcraftlogs.com/oauth/token'
 export const WCL_API_URL = 'https://www.warcraftlogs.com/api/v2/client'
 
 export const RIO_API_URL = 'https://raider.io/api/v1'
-export const RIO_TIER_SLUG = 'tier-mn-1'
+// Midnight Season 2. Raider.IO tracks the season's three raids as separate
+// slugs (the-venomous-abyss, the-tidebound-grotto, the-unbinding-of-kithix);
+// only the main raid counts toward the tier, mirroring how Sporefall was
+// excluded from Season 1.
+export const RIO_TIER_SLUG = 'the-venomous-abyss'
 
-export const TIER_ZONE_NAME = 'VS / DR / MQD'
+// WCL zone 53. WCL folds Nymrissa Wavecaller (3379) and Kith'ix (3513) into
+// this zone, so the tier is narrowed to TIER_ENCOUNTER_IDS below.
+export const TIER_ZONE_NAME = 'The Venomous Abyss'
 
-// Encounter ID → sub-raid name. WCL merges all three raids into zone 46.
-export const ENCOUNTER_SUBRAID: Record<number, string> = {
-  3176: 'Voidspire',
-  3177: 'Voidspire',
-  3179: 'Voidspire',
-  3178: 'Voidspire',
-  3180: 'Voidspire',
-  3181: 'Voidspire',
-  3306: 'Dreamrift',
-  3182: "March on Quel'danas",
-  3183: "March on Quel'danas",
-}
+// The encounters that make up the tier, in WCL zone order.
+export const TIER_ENCOUNTER_IDS: readonly number[] = [
+  3470, // Nek'zali the Soulcoiler
+  3445, // Entombed Sentinels
+  3455, // Vashnik the Malignant
+  3497, // The Lost Explorers
+  3420, // Sszorak
+  3421, // The Twin Fangs
+  3429, // The Coiled Altar
+  3492, // Ula'tek
+]
 
-// CE = Mythic kill of Midnight Falls (final boss of March on Quel'danas).
-export const CE_GATE_ENCOUNTER_IDS: readonly number[] = [3183]
+// Encounter ID -> sub-raid name. Season 2 has a single tier raid.
+export const ENCOUNTER_SUBRAID: Record<number, string> = Object.fromEntries(
+  TIER_ENCOUNTER_IDS.map(id => [id, 'The Venomous Abyss']),
+)
+
+// CE = Mythic kill of Ula'tek (final boss of The Venomous Abyss).
+export const CE_GATE_ENCOUNTER_IDS: readonly number[] = [3492]

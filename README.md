@@ -3,12 +3,12 @@
 Ranks World of Warcraft Mythic raid guilds by hours raided per week before
 Cutting Edge. Live at [clockedrankings.github.io/clocked-rankings](https://clockedrankings.github.io/clocked-rankings/).
 
-For the current tier (Voidspire / Dreamrift / March on Quel'danas), pulls
+For the current tier (The Venomous Abyss, Midnight Season 2), pulls
 guild rankings from WarcraftLogs, fetches each guild's reports + per-fight
 timestamps, and computes:
 
-- **Bosses killed** on Mythic (out of 9 tier encounters)
-- **Hours raided per week** before their Cutting Edge kill (Midnight Falls)
+- **Bosses killed** on Mythic (out of 8 tier encounters)
+- **Hours raided per week** before their Cutting Edge kill (Ula'tek)
 - **Raid category** based on local-time start (Late Night / Evening / etc.)
 - Standout badges (Most Efficient, Grindiest, Marathon Night, etc.)
 

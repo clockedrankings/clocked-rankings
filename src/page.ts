@@ -61,10 +61,16 @@ const DAY_MS = 24 * 3_600_000
 // midnight (or a post-midnight extension) stays on the weekday it started.
 const RAID_DAY_START_HOUR = 6
 
+// A weekday counts toward the schedule only if the guild raided on it in at
+// least this many different weeks, so a one-off extra night doesn't inflate it.
+const MIN_WEEKS_PER_WEEKDAY = 2
+
 // Estimate a guild's weekly schedule from its logs: for each weekday, take the
 // longest raid day the guild logged on that weekday, then sum the seven.
 // A guild raiding Tue/Wed/Thu for at most 3h each scores 9h, however many
-// weeks it took or how often it skipped a night.
+// weeks it took or how often it skipped a night. Weekdays seen in fewer than
+// MIN_WEEKS_PER_WEEKDAY weeks are skipped; if that leaves nothing (too little
+// history), every weekday counts so the guild still gets a number.
 function scheduleHoursPerWeek(sessions: Interval[], region: string): number {
   const shift = ((REGION_OFFSET[region] ?? 0) - RAID_DAY_START_HOUR) * 3_600_000
   const msByDate = new Map<number, number>()
@@ -73,12 +79,18 @@ function scheduleHoursPerWeek(sessions: Interval[], region: string): number {
     msByDate.set(date, (msByDate.get(date) ?? 0) + (iv.last - iv.first))
   }
   const longestByWeekday = new Array<number>(7).fill(0)
+  // Each date sits in exactly one week, so distinct dates on a weekday equal
+  // distinct weeks the guild raided on that weekday.
+  const weeksByWeekday = new Array<number>(7).fill(0)
   for (const [date, ms] of msByDate) {
     // Day 0 of the Unix epoch was a Thursday (getUTCDay() === 4).
     const weekday = (date + 4) % 7
     longestByWeekday[weekday] = Math.max(longestByWeekday[weekday], ms)
+    weeksByWeekday[weekday] += 1
   }
-  return longestByWeekday.reduce((a, b) => a + b, 0) / 3_600_000
+  const recurring = longestByWeekday.filter((_, d) => weeksByWeekday[d] >= MIN_WEEKS_PER_WEEKDAY)
+  const counted = recurring.length > 0 ? recurring : longestByWeekday
+  return counted.reduce((a, b) => a + b, 0) / 3_600_000
 }
 // Anchor weeks to Monday 00:00 in the guild's local time. Unix epoch fell on
 // Thursday UTC, so shift +3 days to land bucket boundaries on Monday, then
@@ -467,6 +479,10 @@ export function renderRankingsPage(): string {
         matter how many weeks prog took or how many nights it skipped. A raid
         day runs 6am to 6am local time, so a night that crosses midnight
         counts once.</p>
+      <p>A weekday only counts if the guild raided on it in at least 2
+        different weeks, so a one-off extra night doesn't inflate the number.
+        Guilds with too little history for any weekday to repeat count every
+        day they raided.</p>
       <p>All tier reports count toward raid time: Normal, Heroic, and Mythic
         (splits and BiS farm are real prep work). Boss kills only count from
         Mythic. Total hours is every raid session before CE added up, and

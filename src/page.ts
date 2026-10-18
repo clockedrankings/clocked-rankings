@@ -56,6 +56,30 @@ function mergeIntervals(intervals: Interval[]): Interval[] {
 }
 
 const WEEK_MS = 7 * 24 * 3_600_000
+const DAY_MS = 24 * 3_600_000
+// A "raid day" runs from 06:00 to 06:00 local time, so a night that crosses
+// midnight (or a post-midnight extension) stays on the weekday it started.
+const RAID_DAY_START_HOUR = 6
+
+// Estimate a guild's weekly schedule from its logs: for each weekday, take the
+// longest raid day the guild logged on that weekday, then sum the seven.
+// A guild raiding Tue/Wed/Thu for at most 3h each scores 9h, however many
+// weeks it took or how often it skipped a night.
+function scheduleHoursPerWeek(sessions: Interval[], region: string): number {
+  const shift = ((REGION_OFFSET[region] ?? 0) - RAID_DAY_START_HOUR) * 3_600_000
+  const msByDate = new Map<number, number>()
+  for (const iv of sessions) {
+    const date = Math.floor((iv.first + shift) / DAY_MS)
+    msByDate.set(date, (msByDate.get(date) ?? 0) + (iv.last - iv.first))
+  }
+  const longestByWeekday = new Array<number>(7).fill(0)
+  for (const [date, ms] of msByDate) {
+    // Day 0 of the Unix epoch was a Thursday (getUTCDay() === 4).
+    const weekday = (date + 4) % 7
+    longestByWeekday[weekday] = Math.max(longestByWeekday[weekday], ms)
+  }
+  return longestByWeekday.reduce((a, b) => a + b, 0) / 3_600_000
+}
 // Anchor weeks to Monday 00:00 in the guild's local time. Unix epoch fell on
 // Thursday UTC, so shift +3 days to land bucket boundaries on Monday, then
 // apply the region offset so a Wed/Thu raid night doesn't split across weeks.
@@ -241,7 +265,7 @@ function loadRanked(): GuildData[] {
       ...g,
       data_source,
       total_hours,
-      hours_per_week: total_hours / raid_weeks,
+      hours_per_week: scheduleHoursPerWeek(sessions, g.region),
       raid_nights: sessions.length,
       raid_weeks,
       longest_night_hours: sessions.reduce((m, iv) => Math.max(m, iv.last - iv.first), 0) / 3_600_000,
@@ -436,13 +460,18 @@ export function renderRankingsPage(): string {
         we take the full pull window, including wipes, trash, and breaks between
         pulls. Overlapping reports (kill-only logs on top of full logs) are merged.
         Multi-day reports are split into per-night sessions using fight gaps.</p>
-      <p>Total raid time ÷ Mythic-prog weeks (elapsed time from Mythic open
-        to CE, or to most recent activity for guilds still progressing,
-        rounded up to whole weeks).</p>
+      <p>Hours / week estimates the guild's raid schedule from its logs. For
+        each day of the week, we take the longest raid day the guild logged on
+        that weekday, then add up the seven. A guild that raids Tuesday,
+        Wednesday and Thursday for at most 3 hours each shows 9 hours, no
+        matter how many weeks prog took or how many nights it skipped. A raid
+        day runs 6am to 6am local time, so a night that crosses midnight
+        counts once.</p>
       <p>All tier reports count toward raid time: Normal, Heroic, and Mythic
         (splits and BiS farm are real prep work). Boss kills only count from
-        Mythic. The weeks denominator only counts weeks during the Mythic-prog
-        window, so pre-Mythic weeks don't dilute the rate.</p>
+        Mythic. Total hours is every raid session before CE added up, and
+        Weeks counts Mythic-prog weeks from Mythic open to CE, or to the most
+        recent activity for guilds still progressing.</p>
       <h3>Before CE</h3>
       <p>For guilds with Cutting Edge (Ula'tek Mythic kill), reports after their
         CE timestamp are excluded. Stat stays frozen once achieved. For guilds still

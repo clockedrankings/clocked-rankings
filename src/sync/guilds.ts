@@ -1,5 +1,5 @@
 import { db, getState, setState, clearState } from '../db.js'
-import { fetchEncounterRankings, fetchZonePartitions } from '../wcl/client.js'
+import { fetchEncounterRankings, fetchZonePartitions, getLastRateLimit } from '../wcl/client.js'
 import { loadZone } from './zones.js'
 
 interface DiscoveryCheckpoint {
@@ -9,6 +9,17 @@ interface DiscoveryCheckpoint {
 }
 
 const STATE_KEY = 'guild_discovery_checkpoint'
+
+// Discovery pages through every partition × encounter forever and runs before
+// report sync, so left alone it would spend the whole hourly database-point
+// budget. Past this share it pauses at its checkpoint and leaves the rest for
+// report sync.
+const DISCOVERY_DATABASE_SHARE = 0.5
+
+function discoveryBudgetSpent(): boolean {
+  const rl = getLastRateLimit()
+  return rl !== null && rl.databasePointsSpentThisHour >= rl.databaseLimitPerHour * DISCOVERY_DATABASE_SHARE
+}
 
 function loadCheckpoint(): DiscoveryCheckpoint {
   const raw = getState(STATE_KEY)
@@ -49,6 +60,10 @@ export async function syncGuilds(encounterIDs: number[]): Promise<void> {
 
       while (true) {
         saveCheckpoint({ partitionIdx: pi, encounterIdx: ei, page })
+        if (discoveryBudgetSpent()) {
+          console.log(`  discovery paused at its database-point share (partition ${partition}, encounter ${encounterID}, page ${page})`)
+          return
+        }
         const rankings = await fetchEncounterRankings(encounterID, page, partition)
 
         const tx = db.transaction(() => {

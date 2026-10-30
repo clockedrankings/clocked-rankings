@@ -13,8 +13,10 @@ if (!CLIENT_ID || !CLIENT_SECRET) {
 function logRateLimit(): void {
   const rl = getLastRateLimit()
   if (!rl) return
-  const remaining = rl.limitPerHour - rl.pointsSpentThisHour
-  console.log(`  Rate limit: ${rl.pointsSpentThisHour}/${rl.limitPerHour} (${remaining} left, resets in ${rl.pointsResetIn}s)`)
+  console.log(
+    `  Rate limit: ${rl.pointsSpentThisHour}/${rl.limitPerHour} points, ` +
+      `${rl.databasePointsSpentThisHour}/${rl.databaseLimitPerHour} database points (resets in ${rl.pointsResetIn}s)`,
+  )
 }
 
 async function main(): Promise<void> {

@@ -23,7 +23,10 @@ The static site is generated and published by GitHub Actions:
    - Discovers Mythic guilds across every encounter × partition
    - Fetches each guild's reports and per-fight timestamps
    - Marks CE when a guild kills the tier's gating boss on Mythic
-   - Exits cleanly on rate-limit; checkpoints persist progress
+   - Exits cleanly on rate-limit; checkpoints persist progress. WCL meters
+     1000 application points/hr and, within those, 250 database points/hr
+     (rankings and report listing). Database points run out first, so
+     discovery stops at half of them to leave the rest for report sync
 4. Saves the DB back to cache.
 5. Runs `npm run build` — embeds all guild data as JSON in a single
    self-contained HTML file. Filter/sort/render runs entirely in the

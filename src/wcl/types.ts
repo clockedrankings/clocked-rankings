@@ -2,6 +2,8 @@ export interface RateLimitData {
   limitPerHour: number
   pointsSpentThisHour: number
   pointsResetIn: number
+  databaseLimitPerHour: number
+  databasePointsSpentThisHour: number
 }
 
 export interface WorldZone {

@@ -85,6 +85,8 @@ const NO_DATA_TTL_SECS = 24 * 3600
 const isRecentlyEmpty = db.prepare<[number, number]>(
   'SELECT 1 FROM guilds WHERE id = ? AND rio_no_data_at IS NOT NULL AND rio_no_data_at > ?',
 )
+// A guild's clock stops at CE, so there is nothing left to fetch for it.
+const hasCE = db.prepare<[number]>('SELECT 1 FROM guilds WHERE id = ? AND ce_achieved_at IS NOT NULL')
 
 interface ResolvedGuild {
   id: number
@@ -266,8 +268,8 @@ function buildCandidateQueue(rankings: CachedRanking[], verbose: boolean): Queue
   // state changes between cache refreshes.
   const queued: QueuedGuild[] = []
   const ttlCutoff = Math.floor(Date.now() / 1000) - NO_DATA_TTL_SECS
-  const counts: Record<string, { total: number; wcl: number; empty: number }> = {}
-  for (const region of REGIONS) counts[region] = { total: 0, wcl: 0, empty: 0 }
+  const counts: Record<string, { total: number; wcl: number; ce: number; empty: number }> = {}
+  for (const region of REGIONS) counts[region] = { total: 0, wcl: 0, ce: 0, empty: 0 }
 
   for (const r of rankings) {
     const c = counts[r.region]
@@ -284,6 +286,10 @@ function buildCandidateQueue(rankings: CachedRanking[], verbose: boolean): Queue
       if (c) c.wcl += 1
       continue
     }
+    if (hasCE.get(resolved.id)) {
+      if (c) c.ce += 1
+      continue
+    }
     if (isRecentlyEmpty.get(resolved.id, ttlCutoff)) {
       if (c) c.empty += 1
       continue
@@ -294,8 +300,8 @@ function buildCandidateQueue(rankings: CachedRanking[], verbose: boolean): Queue
   if (verbose) {
     for (const region of REGIONS) {
       const c = counts[region]
-      const candidates = c.total - c.wcl - c.empty
-      console.log(`    ${region}: ${c.total} ranked (${c.wcl} on WCL, ${c.empty} no-data cached, ${candidates} candidates)`)
+      const candidates = c.total - c.wcl - c.ce - c.empty
+      console.log(`    ${region}: ${c.total} ranked (${c.wcl} on WCL, ${c.ce} already CE, ${c.empty} no-data cached, ${candidates} candidates)`)
     }
   }
   return queued

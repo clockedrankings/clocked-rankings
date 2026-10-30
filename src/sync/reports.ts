@@ -89,6 +89,10 @@ async function syncGuildReports(
   while (true) {
     saveCursor({ guildID: guild.id, page })
     const reports = await fetchGuildReports(guild.id, page, zoneID)
+    if (reports === null) {
+      console.warn(`  guild ${guild.id} (${guild.name}) no longer exists on WCL — skipping`)
+      break
+    }
 
     for (const report of reports.data) {
       // Skip if we've already processed this report

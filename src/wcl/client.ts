@@ -126,13 +126,19 @@ export async function fetchGuildReports(
   guildID: number,
   page: number,
   zoneID: number | null = null,
-): Promise<GuildReportsPage> {
-  const data = await gql<{ reportData: { reports: GuildReportsPage } }>(GET_GUILD_REPORTS, {
-    guildID,
-    page,
-    zoneID: zoneID ?? undefined,
-  })
-  return data.reportData.reports
+): Promise<GuildReportsPage | null> {
+  try {
+    const data = await gql<{ reportData: { reports: GuildReportsPage } }>(GET_GUILD_REPORTS, {
+      guildID,
+      page,
+      zoneID: zoneID ?? undefined,
+    })
+    return data.reportData.reports
+  } catch (err) {
+    // Guild was deleted/merged on WCL after we discovered it
+    if (err instanceof Error && err.message.includes('No guild exists for this id')) return null
+    throw err
+  }
 }
 
 export async function fetchReportFights(code: string): Promise<ReportFightsData> {

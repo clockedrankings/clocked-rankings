@@ -1,10 +1,8 @@
 name: Sync and publish
 
 on:
-  schedule:
-    # Every 10 minutes. GitHub silently drops scheduled runs under load, so
-    # we over-schedule and rely on the sync being a no-op when rate-limited.
-    - cron: '*/5 * * * *'
+  # No schedule: GitHub dropped most cron runs (hours between them). The Mac
+  # mini dispatches this hourly via launchd/com.clocked.sync-and-publish.plist.
   workflow_dispatch:
 
 concurrency:

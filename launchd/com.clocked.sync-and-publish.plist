@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Hourly dispatch of the GitHub "Sync and publish" workflow from the Mac mini.
+  The sync itself still runs in Actions (secrets and the DB cache live there).
+
+  Install:
+    cp launchd/com.clocked.sync-and-publish.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.clocked.sync-and-publish.plist
+  Run now:   launchctl kickstart gui/$(id -u)/com.clocked.sync-and-publish
+  Remove:    launchctl bootout gui/$(id -u)/com.clocked.sync-and-publish
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.clocked.sync-and-publish</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/williamlang/workspace/clocked-rankings/launchd/trigger-sync.sh</string>
+    </array>
+
+    <!-- Top of every hour. Unlike cron, launchd fires a missed calendar slot
+         once on wake instead of skipping it. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>/Users/williamlang</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/williamlang/Library/Logs/clocked-sync-and-publish.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/williamlang/Library/Logs/clocked-sync-and-publish.log</string>
+</dict>
+</plist>

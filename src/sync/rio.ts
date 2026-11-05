@@ -56,8 +56,8 @@ const upsertReport = db.prepare(`
 `)
 
 const insertFight = db.prepare(`
-  INSERT INTO fights (report_code, fight_id, guild_id, start_time, end_time, encounter_id, difficulty)
-  VALUES (@report_code, @fight_id, @guild_id, @start_time, @end_time, @encounter_id, @difficulty)
+  INSERT INTO fights (report_code, fight_id, guild_id, start_time, end_time, encounter_id, difficulty, in_tier)
+  VALUES (@report_code, @fight_id, @guild_id, @start_time, @end_time, @encounter_id, @difficulty, 1)
   ON CONFLICT(report_code, fight_id) DO UPDATE SET
     start_time = excluded.start_time,
     end_time = excluded.end_time

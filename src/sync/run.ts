@@ -1,7 +1,7 @@
 import { CLIENT_ID, CLIENT_SECRET } from '../config.js'
 import { ensureZones, getAllEncounterIDs } from './zones.js'
 import { syncGuilds } from './guilds.js'
-import { syncReports } from './reports.js'
+import { backfillPullWindows, syncReports } from './reports.js'
 import { RateLimitError, WCLServerError, getLastRateLimit } from '../wcl/client.js'
 import { db, setState } from '../db.js'
 
@@ -23,6 +23,8 @@ async function main(): Promise<void> {
   console.log('→ Ensuring zones...')
   const zone = await ensureZones()
   console.log(`  zone ${zone.id}: ${zone.name}`)
+  const fixed = backfillPullWindows()
+  if (fixed > 0) console.log(`  recomputed pull windows for ${fixed} stored reports`)
 
   console.log('→ Discovering guilds with ≥1 Mythic kill...')
   const before = (db.prepare('SELECT COUNT(*) as c FROM guilds').get() as { c: number }).c

@@ -65,6 +65,8 @@ db.exec(`
     end_time INTEGER NOT NULL,
     encounter_id INTEGER,
     difficulty INTEGER,
+    -- 1 = tier-boss pull, or trash in the same instance as one; NULL = not yet classified.
+    in_tier INTEGER,
     PRIMARY KEY (report_code, fight_id)
   );
 
@@ -106,6 +108,11 @@ if (!guildCols.has('rio_no_data_at')) {
     db.exec('ALTER TABLE guilds ADD COLUMN rio_no_data_at INTEGER')
   }
 }
+
+const fightCols = new Set(
+  (db.prepare('PRAGMA table_info(fights)').all() as { name: string }[]).map(c => c.name),
+)
+if (!fightCols.has('in_tier')) db.exec('ALTER TABLE fights ADD COLUMN in_tier INTEGER')
 
 db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_guilds_wcl_id ON guilds(wcl_id) WHERE wcl_id IS NOT NULL;

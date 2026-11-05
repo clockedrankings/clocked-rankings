@@ -66,5 +66,7 @@ export interface ReportFightsData {
     encounterID: number
     difficulty: number | null
     kill: boolean | null
+    // The instance the fight happened in; distinguishes raid trash from M+ trash.
+    gameZone?: { id: number } | null
   }>
 }

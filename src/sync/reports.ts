@@ -1,6 +1,6 @@
 import { db, getState, setState, clearState } from '../db.js'
 import { fetchGuildReports, fetchReportFights } from '../wcl/client.js'
-import { getCEGateEncounterIDs, loadZone } from './zones.js'
+import { getAllEncounterIDs, getCEGateEncounterIDs, loadZone } from './zones.js'
 
 const MYTHIC_DIFFICULTY = 5
 const STATE_KEY = 'report_sync_cursor'
@@ -46,11 +46,12 @@ const upsertReport = db.prepare(`
 `)
 
 const insertFight = db.prepare(`
-  INSERT INTO fights (report_code, fight_id, guild_id, start_time, end_time, encounter_id, difficulty)
-  VALUES (@report_code, @fight_id, @guild_id, @start_time, @end_time, @encounter_id, @difficulty)
+  INSERT INTO fights (report_code, fight_id, guild_id, start_time, end_time, encounter_id, difficulty, in_tier)
+  VALUES (@report_code, @fight_id, @guild_id, @start_time, @end_time, @encounter_id, @difficulty, @in_tier)
   ON CONFLICT(report_code, fight_id) DO UPDATE SET
     start_time = excluded.start_time,
-    end_time = excluded.end_time
+    end_time = excluded.end_time,
+    in_tier = excluded.in_tier
 `)
 
 const upsertKill = db.prepare(`
@@ -80,10 +81,40 @@ function checkCE(guildID: number): number | null {
   return Math.max(...kills.map(k => k.killed_at))
 }
 
+// Fights stored before in_tier existed carry no game zone, so only their boss
+// pulls can be classified; their trash is left out of the window.
+const classifyLegacyFights = db.prepare(`
+  UPDATE fights SET in_tier = (encounter_id IN (SELECT id FROM encounters))
+  WHERE in_tier IS NULL
+`)
+
+// Recompute stored WCL pull windows from in-tier fights. Idempotent; fixes
+// reports synced while M+ and other-raid fights still stretched the window.
+const recomputePullWindows = db.prepare(`
+  UPDATE reports SET first_pull = w.fp, last_pull = w.lp
+  FROM (
+    SELECT r.code, MIN(f.start_time) AS fp, MAX(f.end_time) AS lp
+    FROM reports r
+    LEFT JOIN fights f ON f.report_code = r.code AND f.in_tier = 1
+    WHERE r.code NOT LIKE 'rio:%'
+    GROUP BY r.code
+  ) w
+  WHERE reports.code = w.code
+    AND (reports.first_pull IS NOT w.fp OR reports.last_pull IS NOT w.lp)
+`)
+
+// Returns the number of reports whose window changed. Needs encounters loaded.
+export function backfillPullWindows(): number {
+  if (getAllEncounterIDs().length === 0) return 0
+  classifyLegacyFights.run()
+  return recomputePullWindows.run().changes
+}
+
 async function syncGuildReports(
   guild: PendingGuild,
   startPage: number,
   zoneID: number | null,
+  tierEncounters: Set<number>,
 ): Promise<void> {
   let page = startPage
   while (true) {
@@ -101,14 +132,25 @@ async function syncGuildReports(
       // Fetch fights to compute pull window + kill detection
       const full = await fetchReportFights(report.code)
 
-      // Pull window: first fight start to last fight end (in absolute ms)
+      // A fight is in-tier if it is a tier-boss pull, or trash in the same
+      // instance as one. M+, other raids and old-tier bosses are left out.
+      const tierGameZones = new Set(
+        full.fights
+          .filter(f => tierEncounters.has(f.encounterID) && f.gameZone)
+          .map(f => f.gameZone!.id),
+      )
+      const inTier = (f: (typeof full.fights)[number]): boolean =>
+        tierEncounters.has(f.encounterID) ||
+        (f.encounterID === 0 && f.gameZone != null && tierGameZones.has(f.gameZone.id))
+
+      // Pull window over in-tier fights (absolute ms). Null when the report has
+      // none, which drops it from the page.
       let firstPull: number | null = null
       let lastPull: number | null = null
-      if (full.fights.length > 0) {
-        const fightStarts = full.fights.map(f => f.startTime)
-        const fightEnds = full.fights.map(f => f.endTime)
-        firstPull = full.startTime + Math.min(...fightStarts)
-        lastPull = full.startTime + Math.max(...fightEnds)
+      const tierFights = full.fights.filter(inTier)
+      if (tierFights.length > 0) {
+        firstPull = full.startTime + Math.min(...tierFights.map(f => f.startTime))
+        lastPull = full.startTime + Math.max(...tierFights.map(f => f.endTime))
       }
 
       upsertReport.run({
@@ -131,6 +173,7 @@ async function syncGuildReports(
             end_time: full.startTime + f.endTime,
             encounter_id: f.encounterID,
             difficulty: f.difficulty,
+            in_tier: inTier(f) ? 1 : 0,
           })
           if (f.kill && f.difficulty === MYTHIC_DIFFICULTY) {
             upsertKill.run(guild.id, f.encounterID, report.code, full.startTime + f.startTime)
@@ -154,6 +197,7 @@ export async function syncReports(limit?: number): Promise<void> {
   const allGuilds = pendingGuilds()
   const guilds = limit !== undefined ? allGuilds.slice(0, limit) : allGuilds
   const zoneID = loadZone()?.id ?? null
+  const tierEncounters = new Set(getAllEncounterIDs())
 
   let startIdx = 0
   let startPage = 1
@@ -166,7 +210,7 @@ export async function syncReports(limit?: number): Promise<void> {
   }
 
   for (let i = startIdx; i < guilds.length; i++) {
-    await syncGuildReports(guilds[i], i === startIdx ? startPage : 1, zoneID)
+    await syncGuildReports(guilds[i], i === startIdx ? startPage : 1, zoneID, tierEncounters)
   }
 
   clearState(STATE_KEY)

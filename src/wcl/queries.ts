@@ -69,6 +69,7 @@ export const GET_REPORT_FIGHTS = `
           encounterID
           difficulty
           kill
+          gameZone { id }
         }
       }
     }

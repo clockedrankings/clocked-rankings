@@ -182,6 +182,7 @@ function loadRanked(): GuildData[] {
          FROM fights f
          JOIN guilds g ON g.id = f.guild_id
          WHERE f.report_code IN (${placeholders})
+           AND f.in_tier = 1
            AND (g.ce_achieved_at IS NULL OR f.start_time <= g.ce_achieved_at)
          ORDER BY f.report_code, f.start_time`,
       )
